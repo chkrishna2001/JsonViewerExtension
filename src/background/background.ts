@@ -3,7 +3,7 @@
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "open-json-viewer",
-    title: "Open in JsonViewer",
+    title: "Open in JSON Query Tool",
     contexts: ["selection", "page", "link"]
   });
 });

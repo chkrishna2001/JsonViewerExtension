@@ -1,4 +1,4 @@
-# JsonViewer Browser Extension
+# JSON Query Tool
 
 A powerful, high-performance browser extension for viewing, querying, and analyzing JSON data directly in your browser. Built with React, TypeScript, and Vite, this extension leverages Web Workers and Sandboxed Iframes to handle massive JSON payloads without freezing your browser.
 

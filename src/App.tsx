@@ -253,7 +253,7 @@ export default function App() {
     <div className="container">
       <iframe ref={sandboxRef} src="/sandbox.html" style={{ display: 'none' }}></iframe>
       <header className="header">
-        <h1 style={{ margin: 0, fontSize: '1.25rem' }}>JsonViewer</h1>
+        <h1 style={{ margin: 0, fontSize: '1.25rem' }}>JSON Query Tool</h1>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           {!isExternal && (
             <div>
