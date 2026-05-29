@@ -4,20 +4,24 @@ import { resolve } from 'path'
 
 import fs from 'fs'
 
+const browser = process.env.BROWSER || 'chrome';
+const outDir = browser === 'firefox' ? 'dist-firefox' : 'dist-chrome';
+
 function modifyManifestPlugin() {
   return {
     name: 'modify-manifest',
     closeBundle() {
-      const manifestPath = resolve(__dirname, 'dist/manifest.json');
+      const manifestPath = resolve(__dirname, outDir, 'manifest.json');
       if (fs.existsSync(manifestPath)) {
         const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-        const browser = process.env.BROWSER || 'chrome';
         
         if (browser === 'firefox') {
           manifest.background = {
             scripts: ["background.js"],
             type: "module"
           };
+          // Firefox MV3 does not support the sandbox manifest key
+          delete manifest.sandbox;
         } else {
           // Chrome/Edge use service_worker
           manifest.background = {
@@ -38,6 +42,7 @@ function modifyManifestPlugin() {
 export default defineConfig({
   plugins: [react(), modifyManifestPlugin()],
   build: {
+    outDir: outDir,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),

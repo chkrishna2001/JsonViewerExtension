@@ -3,14 +3,6 @@
   "name": "JSON Query Tool",
   "version": "1.1.0",
   "description": "Robust JSON querying tool with large file support, interactive tree, and table views.",
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "jsonviewer@chirravuris.com",
-      "data_collection_permissions": {
-        "required": ["none"]
-      }
-    }
-  },
   "permissions": [
     "contextMenus",
     "tabs",

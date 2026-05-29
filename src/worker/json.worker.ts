@@ -22,6 +22,6 @@ self.onmessage = (e: MessageEvent) => {
       self.postMessage({ action: 'QUERY_SUCCESS', payload: result, id });
     }
   } catch (error: any) {
-    self.postMessage({ action: 'ERROR', error: error.message, id });
+    self.postMessage({ action: 'ERROR', error: error.message, sourceAction: action, id });
   }
 };
