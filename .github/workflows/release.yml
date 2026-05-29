@@ -66,6 +66,7 @@ jobs:
           files: |
             json-query-tool-chrome.zip
             json-query-tool-firefox.zip
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
