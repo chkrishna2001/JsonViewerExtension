@@ -527,20 +527,20 @@ export default function App() {
 
         const aiObj = (window as any).ai;
         if (!aiObj) {
-          throw new Error(`Local Gemini Nano is not detected in your browser. To enable, navigate to <code style='background-color: var(--bg-tertiary); padding: 2px 4px; border-radius: 4px;'>${flagsUrl}</code>, enable <strong>Prompt API for Gemini Nano</strong> and <strong>Optimization Guide On Device Model</strong>, relaunch ${browserName}, and wait a moment for the model to download.<br/><br/>Alternatively, click the ⚙️ Settings icon in the header to select a different AI provider (like Google Gemini, OpenAI, Anthropic, or OpenRouter) and use your own API key.`);
+          throw new Error(`Local Gemini Nano is not detected in your browser. To enable, navigate to "${flagsUrl}", enable "Prompt API for Gemini Nano" and "Optimization Guide On Device Model", relaunch ${browserName}, and wait a moment for the model to download.\n\nAlternatively, click the ⚙️ Settings icon in the header to select a different AI provider (like Google Gemini, OpenAI, Anthropic, or OpenRouter) and use your own API key.`);
         }
 
         let session;
         if (aiObj.languageModel) {
           const caps = await aiObj.languageModel.capabilities();
           if (caps.available === 'no') {
-            throw new Error(`On-device AI capabilities are disabled. Ensure 'Optimization Guide On Device Model' is set to 'Enabled' in <code style='background-color: var(--bg-tertiary); padding: 2px 4px; border-radius: 4px;'>${flagsUrl}</code>.<br/><br/>Alternatively, click the ⚙️ Settings icon in the header to select a different AI provider and use your own API key.`);
+            throw new Error(`On-device AI capabilities are disabled. Ensure "Optimization Guide On Device Model" is set to "Enabled" in "${flagsUrl}".\n\nAlternatively, click the ⚙️ Settings icon in the header to select a different AI provider and use your own API key.`);
           }
           session = await aiObj.languageModel.create({ systemPrompt });
         } else if (aiObj.assistant) {
           const caps = await aiObj.assistant.capabilities();
           if (caps.available === 'no') {
-            throw new Error(`On-device AI capabilities are disabled. Ensure 'Optimization Guide On Device Model' is set to 'Enabled' in <code style='background-color: var(--bg-tertiary); padding: 2px 4px; border-radius: 4px;'>${flagsUrl}</code>.<br/><br/>Alternatively, click the ⚙️ Settings icon in the header to select a different AI provider and use your own API key.`);
+            throw new Error(`On-device AI capabilities are disabled. Ensure "Optimization Guide On Device Model" is set to "Enabled" in "${flagsUrl}".\n\nAlternatively, click the ⚙️ Settings icon in the header to select a different AI provider and use your own API key.`);
           }
           session = await aiObj.assistant.create({ systemPrompt });
         } else {
@@ -992,7 +992,8 @@ export default function App() {
         )}
 
         {aiError && (
-          <div style={{ fontSize: '0.75rem', color: 'var(--error-color)', padding: '0.25rem 0.5rem', backgroundColor: 'rgba(239, 68, 68, 0.05)', border: '1px solid var(--error-color)', borderRadius: '4px', lineHeight: '1.4' }} dangerouslySetInnerHTML={{ __html: aiError }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--error-color)', padding: '0.25rem 0.5rem', backgroundColor: 'rgba(239, 68, 68, 0.05)', border: '1px solid var(--error-color)', borderRadius: '4px', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>
+            {aiError}
           </div>
         )}
 

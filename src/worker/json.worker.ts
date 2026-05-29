@@ -14,7 +14,7 @@ self.onmessage = (e: MessageEvent) => {
       const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
 
       if (isJsonPath) {
-        result = JSONPath({ path: query, json: parsedData });
+        result = JSONPath({ path: query, json: parsedData, eval: 'safe' });
       } else {
         throw new Error("Queries must be valid JSONPath starting with '$'. JS evaluation is disabled in extensions.");
       }
