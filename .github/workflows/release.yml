@@ -38,12 +38,14 @@ jobs:
 
       - name: Package Chrome Extension
         run: |
+          rm -f json-query-tool-chrome.zip
           cd dist-chrome
           zip -r ../json-query-tool-chrome.zip *
           cd ..
 
       - name: Package Firefox Extension
         run: |
+          rm -f json-query-tool-firefox.zip
           cd dist-firefox
           zip -r ../json-query-tool-firefox.zip *
           cd ..
