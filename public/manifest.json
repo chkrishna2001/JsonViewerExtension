@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JSON Query Tool",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Robust JSON querying tool with large file support, interactive tree, and table views.",
   "browser_specific_settings": {
     "gecko": {
