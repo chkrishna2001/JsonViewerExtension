@@ -22,6 +22,12 @@ function modifyManifestPlugin() {
           };
           // Firefox MV3 does not support the sandbox manifest key
           delete manifest.sandbox;
+
+          // Delete unused sandbox assets to prevent security scanner flags in Firefox
+          const htmlPath = resolve(__dirname, outDir, 'sandbox.html');
+          const jsPath = resolve(__dirname, outDir, 'sandbox.js');
+          if (fs.existsSync(htmlPath)) fs.unlinkSync(htmlPath);
+          if (fs.existsSync(jsPath)) fs.unlinkSync(jsPath);
         } else {
           // Chrome/Edge use service_worker
           manifest.background = {

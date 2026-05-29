@@ -77,6 +77,7 @@ jobs:
       # Publish to Google Chrome Web Store (using stable, version-locked npm CLI)
       - name: Publish to Chrome Web Store
         if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
         run: |
           npx chrome-webstore-upload-cli@2.2.0 upload \
             --source "json-query-tool-chrome.zip" \
@@ -87,8 +88,10 @@ jobs:
             --auto-publish
 
       # Sign & Publish Firefox Extension (using Mozilla's official first-party web-ext tool)
+      # Note: Set --channel to "unlisted" if you want instant signing that bypasses public AMO store validation audits
       - name: Publish to Firefox Add-ons
         if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
         run: |
           npx web-ext@8.3.0 sign \
             --api-key "${{ secrets.FIREFOX_JWT_ISSUER }}" \
@@ -99,6 +102,7 @@ jobs:
       # Publish to Microsoft Edge Add-ons (using verified edge-addons-upload-cli from npm)
       - name: Publish to Edge Add-ons
         if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
         run: |
           npx edge-addons-upload-cli@1.2.1 \
             --product-id "8625c6d0-b5fb-4f8d-80e9-7f866bbf2323" \
