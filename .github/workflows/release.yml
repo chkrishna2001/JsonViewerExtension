@@ -72,10 +72,10 @@ jobs:
       # Publish to Google Chrome Web Store
       - name: Publish to Chrome Web Store
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: passbolt/chrome-webstore-upload-action@v2
+        uses: browser-actions/release-chrome-extension@v3
         with:
-          app-id: 'ghohdnpenjaojhibcjkkmmmnckdgkbhf'
-          file-path: 'json-query-tool-chrome.zip'
+          extension-id: 'ghohdnpenjaojhibcjkkmmmnckdgkbhf'
+          zip-path: 'json-query-tool-chrome.zip'
           client-id: ${{ secrets.CHROME_CLIENT_ID }}
           client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
           refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
@@ -83,7 +83,7 @@ jobs:
       # Sign & Publish Firefox Extension
       - name: Publish to Firefox Add-ons
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: wxt-dev/sign-extension-action@v1
+        uses: browser-actions/release-firefox-addon@v3
         with:
           extension-id: 'jsonviewer@chirravuris.com'
           zip-path: 'json-query-tool-firefox.zip'
@@ -93,7 +93,7 @@ jobs:
       # Publish to Microsoft Edge Add-ons
       - name: Publish to Edge Add-ons
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: wxt-dev/edge-addons-deploy@v1
+        uses: wipflip/edge-addons-deploy@v2
         with:
           product-id: '8625c6d0-b5fb-4f8d-80e9-7f866bbf2323'
           zip-path: 'json-query-tool-chrome.zip'
