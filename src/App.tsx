@@ -31,7 +31,7 @@ interface AiConfig {
   };
 }
 
-const defaultSystemPrompt = "You are a precise JSONPath generator. Translate natural language requests into a valid JSONPath query starting with '$'. Output ONLY the raw JSONPath query string. No explanations, no markdown formatting (like ```jsonpath), no wrapping quotes. E.g. 'first user email' should translate to '$.users[0].email'.";
+const defaultSystemPrompt = "You are a precise JSONPath generator. Translate natural language requests into a valid JSONPath query starting with '$'.\n\nRefer to these JSONPath-plus syntax patterns and examples:\n- Root object: $\n- Dot notation: $.store.book[*].author\n- Deep descent: $..author or $.store..price\n- Bracket notation (single property): $.store.book[0]['title']\n- Union / Multiple properties (unquoted inside brackets, NO spaces after comma): $.store.book[*].[title,author]\n- Array slice: $..book[0,1] or $..book[:2] or $..book[-1:]\n- Filter expressions (with null/undefined checks for nested paths):\n  - Simple: $..book[?(@.isbn)]\n  - Comparison: $..book[?(@.price < 10)]\n  - Nested property safety: $.users[?(@.profile && @.profile.email)]\n\nCRITICAL:\n1. Always output ONLY the raw JSONPath query string. No explanations, no markdown formatting (like ```jsonpath), no wrapping quotes.\n2. For multiple properties selection, do not use quotes inside the brackets (e.g. use [title,author] instead of ['title','author']).";
 
 const defaultAiConfig: AiConfig = {
   enabled: true,
@@ -45,6 +45,7 @@ const defaultAiConfig: AiConfig = {
     openrouter: { apiKey: '', baseUrl: 'https://openrouter.ai/api/v1', model: 'google/gemini-2.5-flash' }
   }
 };
+
 
 // Inline custom SVG Icons for UI Actions
 const StarIcon = () => (
@@ -140,6 +141,7 @@ export default function App() {
   const [aiPrompt, setAiPrompt] = useState<string>('');
   const [aiGenerating, setAiGenerating] = useState<boolean>(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiStatusMessage, setAiStatusMessage] = useState<string>('');
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [isFetchingModels, setIsFetchingModels] = useState<boolean>(false);
   const [activeSuggestionField, setActiveSuggestionField] = useState<string | null>(null);
@@ -148,6 +150,7 @@ export default function App() {
   const workerRef = useRef<Worker | null>(null);
   const sandboxRef = useRef<HTMLIFrameElement | null>(null);
   const hoverTimeout = useRef<number | null>(null);
+  const aiAbortControllerRef = useRef<AbortController | null>(null);
 
   const processRawData = (text: string) => {
     if (workerRef.current) {
@@ -250,7 +253,8 @@ export default function App() {
     // Initialize Web Worker
     workerRef.current = new Worker(new URL('./worker/json.worker.ts', import.meta.url), { type: 'module' });
     workerRef.current.onmessage = (e) => {
-      const { action, payload, error, sourceAction } = e.data;
+      const { action, payload, error, sourceAction, id } = e.data;
+      if (id) return;
       if (action === 'PARSE_SUCCESS') {
         setData(payload);
         setJsonError(null);
@@ -483,12 +487,54 @@ export default function App() {
     }
   };
 
+  const testQueryOnWorker = (queryText: string): Promise<{ success: boolean; error?: string }> => {
+    return new Promise((resolve) => {
+      if (!workerRef.current) {
+        resolve({ success: false, error: "Web Worker is not initialized." });
+        return;
+      }
+      const reqId = Math.random().toString(36).substring(2, 9);
+      const listener = (event: MessageEvent) => {
+        const { action, error, id } = event.data;
+        if (id === reqId) {
+          workerRef.current?.removeEventListener('message', listener);
+          if (action === 'QUERY_SUCCESS') {
+            resolve({ success: true });
+          } else if (action === 'ERROR') {
+            resolve({ success: false, error });
+          }
+        }
+      };
+      workerRef.current.addEventListener('message', listener);
+      workerRef.current.postMessage({
+        action: 'QUERY',
+        id: reqId,
+        payload: {
+          data: sourceText,
+          query: queryText,
+          isJsonPath: queryText.trim().startsWith('$')
+        }
+      });
+    });
+  };
+
+  const handleCancelAiGeneration = () => {
+    if (aiAbortControllerRef.current) {
+      aiAbortControllerRef.current.abort();
+    }
+  };
+
   const handleGenerateJsonPath = async () => {
     const prompt = aiPrompt.trim();
     if (!prompt) return;
 
     setAiGenerating(true);
     setAiError(null);
+    setAiStatusMessage("Analyzing JSON data...");
+
+    const controller = new AbortController();
+    aiAbortControllerRef.current = controller;
+    const signal = controller.signal;
 
     try {
       let prunedSchemaStr = "";
@@ -518,8 +564,8 @@ export default function App() {
 
       console.log("AI Assist query generation payload sample:", prunedSchemaStr);
 
-      let cleanPath = "";
-
+      // Local Gemini Nano Session Init
+      let localSession: any = null;
       if (activeProvider === 'local') {
         const isEdge = navigator.userAgent.indexOf("Edg") !== -1;
         const flagsUrl = isEdge ? "edge://flags" : "chrome://flags";
@@ -530,138 +576,217 @@ export default function App() {
           throw new Error(`Local Gemini Nano is not detected in your browser. To enable, navigate to "${flagsUrl}", enable "Prompt API for Gemini Nano" and "Optimization Guide On Device Model", relaunch ${browserName}, and wait a moment for the model to download.\n\nAlternatively, click the ⚙️ Settings icon in the header to select a different AI provider (like Google Gemini, OpenAI, Anthropic, or OpenRouter) and use your own API key.`);
         }
 
-        let session;
         if (aiObj.languageModel) {
           const caps = await aiObj.languageModel.capabilities();
           if (caps.available === 'no') {
             throw new Error(`On-device AI capabilities are disabled. Ensure "Optimization Guide On Device Model" is set to "Enabled" in "${flagsUrl}".\n\nAlternatively, click the ⚙️ Settings icon in the header to select a different AI provider and use your own API key.`);
           }
-          session = await aiObj.languageModel.create({ systemPrompt });
+          localSession = await aiObj.languageModel.create({ systemPrompt });
         } else if (aiObj.assistant) {
           const caps = await aiObj.assistant.capabilities();
           if (caps.available === 'no') {
             throw new Error(`On-device AI capabilities are disabled. Ensure "Optimization Guide On Device Model" is set to "Enabled" in "${flagsUrl}".\n\nAlternatively, click the ⚙️ Settings icon in the header to select a different AI provider and use your own API key.`);
           }
-          session = await aiObj.assistant.create({ systemPrompt });
+          localSession = await aiObj.assistant.create({ systemPrompt });
         } else {
           throw new Error("Prompt API is not supported in this browser version. Click the ⚙️ Settings icon in the header to select a different AI provider and use your own API key.");
         }
+      }
 
-        const response = await session.prompt(userMessage);
-        cleanPath = response.trim();
-      } 
-      
-      else if (activeProvider === 'gemini') {
-        if (!key) throw new Error("Google Gemini API Key is missing. Open Settings to configure it.");
-        
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`;
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: userMessage }] }],
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            generationConfig: { temperature: 0.1 }
-          })
-        });
+      // Standard conversation history format
+      const conversationHistory: { role: 'user' | 'assistant'; content: string }[] = [
+        { role: 'user', content: userMessage }
+      ];
 
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData?.error?.message || `Gemini API returned status ${response.status}`);
+      const MAX_ATTEMPTS = 4;
+      let attempt = 1;
+      let success = false;
+      let currentQuery = "";
+      let lastErrorMsg = "";
+
+      while (attempt <= MAX_ATTEMPTS) {
+        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+        if (attempt === 1) {
+          setAiStatusMessage("Generating JSONPath query...");
+        } else {
+          setAiStatusMessage(`Query failed validation. Attempting to fix... (Attempt ${attempt}/${MAX_ATTEMPTS})`);
         }
 
-        const resData = await response.json();
-        cleanPath = resData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
-      } 
-      
-      else if (activeProvider === 'openai' || activeProvider === 'openrouter') {
-        if (!key) throw new Error(`API Key is missing for ${activeProvider === 'openrouter' ? 'OpenRouter' : 'OpenAI Specification'}. Open Settings to configure it.`);
+        let cleanPath = "";
+
+        if (activeProvider === 'local') {
+          const msg = conversationHistory[conversationHistory.length - 1].content;
+          if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+          const response = await localSession.prompt(msg);
+          if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+          cleanPath = response.trim();
+        } 
         
-        const endpoint = `${baseUrl}/chat/completions`;
-        const headers: { [key: string]: string } = {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${key}`
-        };
+        else if (activeProvider === 'gemini') {
+          if (!key) throw new Error("Google Gemini API Key is missing. Open Settings to configure it.");
+          
+          const geminiContents = conversationHistory.map(item => ({
+            role: item.role === 'user' ? 'user' : 'model',
+            parts: [{ text: item.content }]
+          }));
 
-        if (activeProvider === 'openrouter') {
-          headers["HTTP-Referer"] = "https://jsonquerytool.com";
-          headers["X-Title"] = "JSON Query Tool";
-        }
+          const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`;
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: geminiContents,
+              systemInstruction: { parts: [{ text: systemPrompt }] },
+              generationConfig: { temperature: 0.1 }
+            }),
+            signal
+          });
 
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            model: modelName,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userMessage }
-            ],
-            temperature: 0.1
-          })
-        });
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData?.error?.message || `Gemini API returned status ${response.status}`);
+          }
 
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData?.error?.message || `API returned status ${response.status}`);
-        }
-
-        const resData = await response.json();
-        cleanPath = resData?.choices?.[0]?.message?.content?.trim() || "";
-      } 
-      
-      else if (activeProvider === 'anthropic') {
-        if (!key) throw new Error("Anthropic API Key is missing. Open Settings to configure it.");
+          const resData = await response.json();
+          cleanPath = resData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+        } 
         
-        const endpoint = `${baseUrl}/messages`;
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
+        else if (activeProvider === 'openai' || activeProvider === 'openrouter') {
+          if (!key) throw new Error(`API Key is missing for ${activeProvider === 'openrouter' ? 'OpenRouter' : 'OpenAI Specification'}. Open Settings to configure it.`);
+          
+          const openaiMessages = [
+            { role: "system", content: systemPrompt },
+            ...conversationHistory.map(item => ({
+              role: item.role,
+              content: item.content
+            }))
+          ];
+
+          const endpoint = `${baseUrl}/chat/completions`;
+          const headers: { [key: string]: string } = {
             "Content-Type": "application/json",
-            "x-api-key": key,
-            "anthropic-version": "2023-06-01",
-            "anthropic-dangerous-direct-browser-access": "true"
-          },
-          body: JSON.stringify({
-            model: modelName,
-            system: systemPrompt,
-            messages: [{ role: "user", content: userMessage }],
-            max_tokens: 100,
-            temperature: 0.1
-          })
-        });
+            "Authorization": `Bearer ${key}`
+          };
 
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData?.error?.message || `Anthropic API returned status ${response.status}`);
+          if (activeProvider === 'openrouter') {
+            headers["HTTP-Referer"] = "https://jsonquerytool.com";
+            headers["X-Title"] = "JSON Query Tool";
+          }
+
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              model: modelName,
+              messages: openaiMessages,
+              temperature: 0.1
+            }),
+            signal
+          });
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData?.error?.message || `API returned status ${response.status}`);
+          }
+
+          const resData = await response.json();
+          cleanPath = resData?.choices?.[0]?.message?.content?.trim() || "";
+        } 
+        
+        else if (activeProvider === 'anthropic') {
+          if (!key) throw new Error("Anthropic API Key is missing. Open Settings to configure it.");
+          
+          const anthropicMessages = conversationHistory.map(item => ({
+            role: item.role,
+            content: item.content
+          }));
+
+          const endpoint = `${baseUrl}/messages`;
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": key,
+              "anthropic-version": "2023-06-01",
+              "anthropic-dangerous-direct-browser-access": "true"
+            },
+            body: JSON.stringify({
+              model: modelName,
+              system: systemPrompt,
+              messages: anthropicMessages,
+              max_tokens: 100,
+              temperature: 0.1
+            }),
+            signal
+          });
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData?.error?.message || `Anthropic API returned status ${response.status}`);
+          }
+
+          const resData = await response.json();
+          cleanPath = resData?.content?.[0]?.text?.trim() || "";
         }
 
-        const resData = await response.json();
-        cleanPath = resData?.content?.[0]?.text?.trim() || "";
+        // Post-processing cleanup
+        if (cleanPath.startsWith('`')) {
+          cleanPath = cleanPath.replace(/`/g, '');
+        }
+        if (cleanPath.toLowerCase().startsWith('jsonpath')) {
+          cleanPath = cleanPath.substring(8).trim();
+        }
+        if (cleanPath.toLowerCase().startsWith('json')) {
+          cleanPath = cleanPath.substring(4).trim();
+        }
+
+        if (!cleanPath) {
+          throw new Error("Received empty response from AI model.");
+        }
+
+        currentQuery = cleanPath;
+        setAiStatusMessage(`Validating query: ${cleanPath}...`);
+
+        if (!sourceText.trim()) {
+          success = true;
+          break;
+        }
+
+        const testRes = await testQueryOnWorker(cleanPath);
+        if (testRes.success) {
+          success = true;
+          break;
+        } else {
+          lastErrorMsg = testRes.error || "Unknown query execution error";
+          console.warn(`Query validation failed (Attempt ${attempt}/${MAX_ATTEMPTS}): ${cleanPath}. Error: ${lastErrorMsg}`);
+          
+          conversationHistory.push({ role: 'assistant', content: cleanPath });
+          const retryUserMessage = `The JSONPath query you generated: "${cleanPath}" failed with the following error during execution:\n"${lastErrorMsg}"\n\nPlease analyze the schema and the error, and generate a corrected, valid JSONPath query starting with '$'. Add null/undefined checks for nested property accesses in filters to avoid null data errors (e.g. use '?(@.profile && @.profile.email)' instead of '?(@.profile.email)'). Remember, output ONLY the raw JSONPath query string. No explanations, no markdown formatting.`;
+          conversationHistory.push({ role: 'user', content: retryUserMessage });
+
+          attempt++;
+        }
       }
 
-      if (cleanPath.startsWith('`')) {
-        cleanPath = cleanPath.replace(/`/g, '');
-      }
-      if (cleanPath.toLowerCase().startsWith('jsonpath')) {
-        cleanPath = cleanPath.substring(8).trim();
-      }
-      if (cleanPath.toLowerCase().startsWith('json')) {
-        cleanPath = cleanPath.substring(4).trim();
-      }
-      
-      if (!cleanPath) {
-        throw new Error("Received empty response from AI model.");
+      if (success) {
+        setQuery(currentQuery);
+        setAiPrompt('');
+        setQueryError(null);
+        executeQuery(currentQuery);
+      } else {
+        throw new Error(`Failed to generate a valid query. Last error: ${lastErrorMsg}`);
       }
 
-      setQuery(cleanPath);
-      setAiPrompt('');
-      setQueryError(null);
     } catch (e: any) {
-      console.error("AI Assist generation error", e);
-      setAiError(e.message || String(e));
+      if (e.name === 'AbortError' || e.message === 'Aborted') {
+        setAiError("AI query generation cancelled by user.");
+      } else {
+        console.error("AI Assist generation error", e);
+        setAiError(e.message || String(e));
+      }
     } finally {
       setAiGenerating(false);
+      setAiStatusMessage('');
     }
   };
 
@@ -987,6 +1112,50 @@ export default function App() {
               title="Generate JSONPath Query"
             >
               {aiGenerating ? 'Generating...' : 'Ask AI'}
+            </button>
+          </div>
+        )}
+
+        {aiGenerating && aiStatusMessage && (
+          <div style={{
+            fontSize: '0.75rem',
+            color: 'var(--accent-color)',
+            padding: '0.35rem 0.5rem',
+            backgroundColor: 'var(--accent-bg)',
+            border: '1px solid var(--accent-border)',
+            borderRadius: '4px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            lineHeight: '1.4'
+          }}>
+            <span style={{
+              display: 'inline-block',
+              width: '12px',
+              height: '12px',
+              border: '2px solid var(--accent-color)',
+              borderTopColor: 'transparent',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite',
+              flexShrink: 0
+            }}></span>
+            <span>{aiStatusMessage}</span>
+            <button 
+              onClick={handleCancelAiGeneration}
+              className="btn"
+              style={{
+                padding: '0.2rem 0.5rem',
+                fontSize: '0.75rem',
+                backgroundColor: 'var(--error-color)',
+                color: 'white',
+                marginLeft: 'auto',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                lineHeight: '1'
+              }}
+            >
+              Cancel
             </button>
           </div>
         )}

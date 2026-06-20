@@ -428,3 +428,9 @@ tr:hover {
   background-color: var(--bg-tertiary) !important;
   color: var(--accent-color) !important;
 }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
