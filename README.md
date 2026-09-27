@@ -1,5 +1,9 @@
 # JSON Query Tool
 
+## Privacy Policy & Data Collection
+This extension provides an "AI Assist" feature. When used, the structural schema of your active JSON data (keys and minimal structural representation, without full payloads) along with your natural language query, are sent to your configured AI provider (Google Gemini, OpenAI, Anthropic, or OpenRouter) to generate a JSONPath query. 
+No user-identifiable data or full JSON payloads are transmitted unless they are part of the JSON structure keys. You will be prompted for consent before using the AI Assist feature for the first time.
+
 A powerful, high-performance browser extension for viewing, querying, and analyzing JSON data directly in your browser. Built with React, TypeScript, and Vite, this extension leverages Web Workers and Sandboxed Iframes to handle massive JSON payloads without freezing your browser.
 
 ## Features

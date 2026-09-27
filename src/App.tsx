@@ -146,6 +146,8 @@ export default function App() {
   const [isFetchingModels, setIsFetchingModels] = useState<boolean>(false);
   const [activeSuggestionField, setActiveSuggestionField] = useState<string | null>(null);
   const [aiFetchError, setAiFetchError] = useState<string | null>(null);
+  const [aiConsentGranted, setAiConsentGranted] = useState<boolean>(false);
+  const [showAiConsentModal, setShowAiConsentModal] = useState<boolean>(false);
 
   const workerRef = useRef<Worker | null>(null);
   const sandboxRef = useRef<HTMLIFrameElement | null>(null);
@@ -221,10 +223,13 @@ export default function App() {
     // 3. Persistent AI Config Loading
     const loadAiConfig = () => {
       if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-        chrome.storage.local.get(['aiConfig'], (result) => {
+        chrome.storage.local.get(['aiConfig', 'aiConsent'], (result) => {
           if (result.aiConfig) {
             setAiConfig(result.aiConfig as AiConfig);
             setTempAiConfig(result.aiConfig as AiConfig);
+          }
+          if (result.aiConsent) {
+            setAiConsentGranted(true);
           }
         });
       } else {
@@ -234,6 +239,10 @@ export default function App() {
             const parsed = JSON.parse(saved) as AiConfig;
             setAiConfig(parsed);
             setTempAiConfig(parsed);
+          }
+          const consent = localStorage.getItem('aiConsent');
+          if (consent === 'true') {
+            setAiConsentGranted(true);
           }
         } catch (e) {
           console.error('Failed to parse AI config', e);
@@ -524,9 +533,24 @@ export default function App() {
     }
   };
 
+  const acceptAiConsent = () => {
+    setAiConsentGranted(true);
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ aiConsent: true });
+    } else {
+      localStorage.setItem('aiConsent', 'true');
+    }
+    setShowAiConsentModal(false);
+  };
+
   const handleGenerateJsonPath = async () => {
     const prompt = aiPrompt.trim();
     if (!prompt) return;
+
+    if (!aiConsentGranted) {
+      setShowAiConsentModal(true);
+      return;
+    }
 
     setAiGenerating(true);
     setAiError(null);
@@ -1874,6 +1898,50 @@ export default function App() {
           </div>
         </div>
       )}
+      
+      {showAiConsentModal && (
+        <div className="modal-overlay" onClick={() => setShowAiConsentModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h2>Data Privacy Notice</h2>
+              <button className="icon-btn" onClick={() => setShowAiConsentModal(false)}><CloseIcon /></button>
+            </div>
+            <div className="modal-body">
+              <p>
+                By using the AI Assist feature, the structural schema (a minimized sample without full values) of your currently active JSON data, along with your natural language query, will be sent to the configured AI provider (such as Google Gemini, OpenAI, Anthropic, or OpenRouter) in order to generate the JSONPath query.
+              </p>
+              <p>
+                <strong>No user-identifiable data or full payloads are transmitted unless they are part of the JSON structure keys.</strong> If you select "Local on-device", data is processed on your machine by the browser's built-in AI, but may still be subject to browser privacy policies.
+              </p>
+              <p>
+                Do you consent to sending your query and JSON schema sample to the AI provider?
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="btn btn-outline" 
+                onClick={() => setShowAiConsentModal(false)}
+                style={{ backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+              >
+                Decline
+              </button>
+              <button 
+                className="btn" 
+                onClick={() => {
+                  acceptAiConsent();
+                  // Automatically trigger the generate if there is a prompt
+                  if (aiPrompt.trim()) {
+                    setTimeout(() => handleGenerateJsonPath(), 100);
+                  }
+                }}
+              >
+                I Consent
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
